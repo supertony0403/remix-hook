@@ -366,3 +366,92 @@ def mux(video: Path, audio: Path, mp4: Path, gain_db: float = 0.0) -> Path:
     subprocess.run(cmd, check=True, timeout=1800)
     tmp.replace(mp4)
     return mp4
+
+
+# ----------------------------------------------------------------------------- chunked render
+def render_chunks(resolve: Any, p: Any, fmt: str, spans: list[tuple[str, int, int]], log=print,
+                  stall_s: int = 300, only: set[int] | None = None) -> list[Path]:
+    """Render the lyric timeline as one ProRes job per section (MarkIn/MarkOut, inclusive), so a
+    stalled section can be redone alone. Stops and raises if a job writes nothing for `stall_s`."""
+    not_rendering(p, "starting chunk renders")
+    tl = find_timeline(p, TIMELINES[fmt])
+    t0 = int(tl.GetStartFrame())
+    out_dir = VIDEOS / f"parts-{fmt}"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    page = resolve.GetCurrentPage()
+    prev = p.GetCurrentTimeline()
+    w, h = (1920, 1080) if fmt == "16x9" else (1080, 1920)
+    jobs: list[tuple[int, str, Path]] = []
+    try:
+        p.SetCurrentTimeline(tl)
+        if not p.SetCurrentRenderFormatAndCodec("mov", prores_hq(p)):
+            raise ResolveError("SetCurrentRenderFormatAndCodec failed")
+        p.SetCurrentRenderMode(1)
+        for i, (name, a, b) in enumerate(spans):
+            if only is not None and i not in only:
+                continue
+            stem = f"part{i:02d}"
+            for old in out_dir.glob(f"{stem}*.mov"):
+                old.unlink()
+            for job in p.GetRenderJobList() or []:
+                if job.get("TargetDir") == str(out_dir) and str(job.get("OutputFilename", "")).startswith(stem):
+                    p.DeleteRenderJob(job["JobId"])
+            base = {"SelectAllFrames": False, "MarkIn": t0 + a, "MarkOut": t0 + b - 1,
+                    "TargetDir": str(out_dir), "CustomName": stem, "UniqueFilenameStyle": 0,
+                    "ExportVideo": True, "ExportAudio": True, "FormatWidth": w, "FormatHeight": h}
+            ok = p.SetRenderSettings({**base, "AudioCodec": "lpcm", "AudioBitDepth": 24,
+                                      "AudioSampleRate": 48000}) or p.SetRenderSettings(base)
+            job = p.AddRenderJob() if ok else ""
+            guard(f"AddRenderJob {stem}")
+            if not job:
+                raise ResolveError(f"AddRenderJob refused {stem} ({name})")
+            jobs.append((i, job, out_dir / f"{stem}.mov"))
+        if not p.StartRendering([j for _, j, _ in jobs], False):
+            raise ResolveError("StartRendering returned False")
+        started = time.time()
+        last_size, last_change, last_log = -1, time.time(), 0.0
+        while p.IsRenderingInProgress():
+            size = sum(f.stat().st_size for f in out_dir.glob("part*.mov"))
+            if size != last_size:
+                last_size, last_change = size, time.time()
+            elif time.time() - last_change > stall_s:
+                p.StopRendering()
+                raise ResolveError(f"render stalled: no output for {stall_s} s")
+            if time.time() - last_log > 60:
+                done = [i for i, j, _ in jobs if p.GetRenderJobStatus(j).get("JobStatus") == "Complete"]
+                log(f"{time.strftime('%H:%M:%S')} {fmt}: parts done {done} after "
+                    f"{(time.time() - started) / 60:.1f} min, {size / 1e9:.1f} GB")
+                last_log = time.time()
+            time.sleep(2)
+        bad = {i: p.GetRenderJobStatus(j) for i, j, _ in jobs}
+        bad = {i: s for i, s in bad.items() if s.get("JobStatus") != "Complete"}
+        if bad:
+            raise ResolveError(f"parts not complete: {bad}")
+        log(f"{fmt}: {len(jobs)} parts in {(time.time() - started) / 60:.1f} min")
+    finally:
+        if not p.IsRenderingInProgress():
+            for _, j, _ in jobs:
+                p.DeleteRenderJob(j)
+            if prev is not None:
+                p.SetCurrentTimeline(prev)
+        if page and resolve.GetCurrentPage() != page:
+            resolve.OpenPage(page)
+    return [path for _, _, path in jobs]
+
+
+def concat_parts(parts: list[Path], out: Path, expected_frames: list[int]) -> Path:
+    """Lossless join (stream copy) after checking every part's frame count."""
+    for path, n in zip(parts, expected_frames, strict=True):
+        got = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-count_packets",
+                              "-show_entries", "stream=nb_read_packets", "-of", "csv=p=0", str(path)],
+                             capture_output=True, text=True, check=True).stdout.strip()
+        if int(got) != n:
+            raise ResolveError(f"{path.name}: {got} frames, expected {n}")
+    lst = out.with_suffix(".txt")
+    lst.write_text("".join(f"file '{pth}'\n" for pth in parts))
+    tmp = out.with_name(f".{out.name}")
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "concat", "-safe", "0", "-i", str(lst),
+                    "-map", "0", "-c", "copy", "-f", "mov", str(tmp)], check=True, timeout=3600)
+    tmp.replace(out)
+    lst.unlink()
+    return out

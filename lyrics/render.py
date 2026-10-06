@@ -3,6 +3,7 @@
     .venv/bin/python -m lyrics.render master 16x9   # Resolve: ProRes 422 HQ into ~/Videos/remix-hook
     .venv/bin/python -m lyrics.render mp4 16x9      # ffmpeg: master video + out/remix-hook-v2.2.wav
     .venv/bin/python -m lyrics.render check 16x9    # lengths, loudness, audio grid, contact sheets
+    .venv/bin/python -m lyrics.render chunks 16x9 [0,3]  # section-wise render (+ concat) instead of master
 
 The sound of the MP4 comes from `out/remix-hook-v2.2.wav`, not from the Resolve master: the remix
 WAV was overwritten in place while the first render ran (23:32), so the master's audio may mix
@@ -100,6 +101,31 @@ def do_master(fmt: str) -> None:
           flush=True)
 
 
+def section_spans(fmt: str) -> list[tuple[str, int, int]]:
+    data = json.loads((resolve_io.WORK / "lyrics.json").read_text())
+    return [(s["name"], int(round(s["comp_start"] * FPS)), int(round(s["comp_end"] * FPS)))
+            for s in data["sections"]]
+
+
+def do_chunks(fmt: str, only: str = "") -> None:
+    """Section-wise ProRes render + lossless concat into the master path."""
+    t0 = time.time()
+    resolve = resolve_io.connect()
+    p = resolve_io.project(resolve)
+    resolve_io.ensure_fonts(resolve)
+    spans = section_spans(fmt)
+    sel = {int(x) for x in only.split(",") if x} or None
+    try:
+        resolve_io.render_chunks(resolve, p, fmt, spans, log=lambda m: print(m, flush=True), only=sel)
+    finally:
+        if not p.IsRenderingInProgress():
+            p.SetCurrentTimeline(resolve_io.find_timeline(p, resolve_io.TIMELINES["16x9"]))
+    parts = [resolve_io.VIDEOS / f"parts-{fmt}" / f"part{i:02d}.mov" for i in range(len(spans))]
+    resolve_io.concat_parts(parts, master_path(fmt), [b - a for _, a, b in spans])
+    print(json.dumps({"fmt": fmt, "master": str(master_path(fmt)), "render_min": round((time.time() - t0) / 60, 1)}),
+          flush=True)
+
+
 def video_path(fmt: str) -> Path:
     return resolve_io.WORK / f"lyrics-remix-{fmt}-video.mp4"
 
@@ -146,4 +172,7 @@ def do_check(fmt: str) -> dict:
 
 if __name__ == "__main__":
     cmd, fmt = sys.argv[1], sys.argv[2]
-    {"master": do_master, "mp4": do_mp4, "check": do_check}[cmd](fmt)
+    if cmd == "chunks":
+        do_chunks(fmt, sys.argv[3] if len(sys.argv) > 3 else "")
+    else:
+        {"master": do_master, "mp4": do_mp4, "check": do_check}[cmd](fmt)
