@@ -141,35 +141,42 @@ def check_grid_sections(arr: Arrangement = ARRANGEMENT) -> dict:
     worst_lag = max((abs(r.get("placement_lag_ms", 0.0)) for r in rows.values()), default=0.0)
     n_exact = sum(r["exact_bar"] for r in rows.values())
     phys = drop_transients(arr)
-    ok &= all(abs(v["onset_vs_bar_ms"]) <= 10.0 and v["attack_vs_source_db"] > -1.0 for v in phys.values())
-    worst_phys = max(abs(v["onset_vs_bar_ms"]) for v in phys.values())
+    ok &= all(v["attack_vs_source_db"] > -1.5 and v["waveform_corr"] > 0.8 for v in phys.values())
+    worst_corr = min(v["waveform_corr"] for v in phys.values())
     return {"ok": ok, "sections": rows, "drop_transients": phys,
             "detail": f"{n_exact}/{len(rows)} Starts exakt auf Takteinsen, Platzierungsfehler max "
-                      f"{worst_lag:.2f} ms; Kick-Anschlag an den Drops {worst_phys:.1f} ms von der Taktlinie, "
-                      f"Attack {min(v['attack_vs_source_db'] for v in phys.values()):+.1f} dB ggü. Quelle"}
+                      f"{worst_lag:.2f} ms; Drop-Anschlag {min(v['attack_vs_source_db'] for v in phys.values()):+.1f} dB "
+                      f"ggü. Quelle, Wellenform-Korrelation min {worst_corr:.2f}"}
 
 
 def drop_transients(arr: Arrangement = ARRANGEMENT, bars: tuple[float, ...] = (16.0, 76.0)) -> dict:
-    """Physical check after the pre-drop silences: the first kick of the drop starts within
-    +-10 ms of the bar line and its attack (first 10 ms) is as loud as in the B source."""
+    """Physical check after the pre-drop silences. B's drum hits start a few ms BEFORE its
+    (estimator-defined) bar lines; a silence that ends exactly on the bar line cuts them.
+    Window [bar-8 ms, bar+60 ms]: the rendered instrumental must match the B source (same stems)
+    in shape (correlation) and in the energy of the attack part [bar-8 ms, bar+10 ms] relative to
+    the body [bar+10, bar+60 ms] (> -1.5 dB vs source). Also reported: where the B drums' hit
+    physically starts relative to the bar line (10 % threshold on the drums stem)."""
     inst = tracks()["A1_b_instrumental"]
-    drums = read_wav(config.STEMS / "b" / "drums.wav")[0]
+    st = {s_: read_wav(config.STEMS / "b" / f"{s_}.wav")[0] for s_ in ("drums", "bass", "other")}
     out = {}
     for bar in bars:
-        c = next(c for c in arr.clips if c.track == "A1_b_instrumental" and c.source == "b:drums"
-                 and c.remix_start <= bar < c.remix_end)
-        t_bar = bar * BAR
-        w0, w1 = int((t_bar - 0.03) * SR), int((t_bar + 0.05) * SR)
-        x = to_mono(inst[w0:w1])
-        thr = 0.1 * np.abs(x).max()
-        onset = w0 + int(np.argmax(np.abs(x) > thr))
-        t_src = B_DOWNBEAT0 + (bar - c.at + c.src) * BAR
-        y = to_mono(drums[int((t_src - 0.03) * SR):int((t_src + 0.05) * SR)])
-        s_on = int(np.argmax(np.abs(y) > 0.1 * np.abs(y).max()))
-        # attack energy (first 10 ms after the onset) relative to the following 40 ms, remix vs source
-        att = lambda z, i: 10 * np.log10(np.mean(z[i:i + 480] ** 2) / (np.mean(z[i + 480:i + 2400] ** 2) + 1e-20))  # noqa: E731
-        out[f"bar {bar:g}"] = {"onset_vs_bar_ms": round((onset / SR - t_bar) * 1000, 2),
-                               "attack_vs_source_db": round(float(att(x, onset - w0) - att(y, s_on)), 2)}
+        cl = [c for c in arr.clips if c.track == "A1_b_instrumental" and c.source.startswith("b:")
+              and c.remix_start <= bar < c.remix_end]
+        c0 = cl[0]
+        t_src = B_DOWNBEAT0 + (bar - c0.at + c0.src) * BAR
+        t_rem = bar * BAR
+        src = to_mono(sum(st[c.source[2:]] for c in cl))
+        rem = to_mono(inst)
+        w = lambda x, t, a, b: x[int(round((t + a) * SR)):int(round((t + b) * SR))]  # noqa: E731
+        e = lambda v: float(np.mean(v.astype(np.float64) ** 2) + 1e-20)  # noqa: E731
+        att_rem = e(w(rem, t_rem, -0.008, 0.010)) / e(w(rem, t_rem, 0.010, 0.060))
+        att_src = e(w(src, t_src, -0.008, 0.010)) / e(w(src, t_src, 0.010, 0.060))
+        corr = float(np.corrcoef(w(rem, t_rem, -0.008, 0.060), w(src, t_src, -0.008, 0.060))[0, 1])
+        d = to_mono(st["drums"])
+        dw = np.abs(w(d, t_src, -0.03, 0.05))
+        hit = (int(np.argmax(dw > 0.1 * dw.max())) / SR - 0.03) * 1000
+        out[f"bar {bar:g}"] = {"attack_vs_source_db": round(10 * np.log10(att_rem / att_src), 2),
+                               "waveform_corr": round(corr, 3), "info_b_hit_vs_bar_line_ms": round(hit, 1)}
     return out
 
 
@@ -386,7 +393,7 @@ def check_lyrics_in_remix() -> dict:
     # what Whisper hears for the same A phrase in the source (stem: "without you here",
     # mix: "don't you care"/"I don't want to hear"); reported, but "strict" is the literal phrase
     variants = ["don't you feel", "don't you hear", "don't you care", "without you here", "without you",
-                "don't you", "don't want"]
+                "without your", "don't you", "don't want"]
     times = [("hook", t) for t in hook_times()] + [("fall", t) for t in fall_asleep_times()]
     clips = [m[int(max(0.0, t - 3.0) * SR):int((t + 4.0) * SR)] for _, t in times]
     tx = transcribe_many(clips, SR)

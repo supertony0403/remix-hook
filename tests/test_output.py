@@ -70,4 +70,7 @@ def test_intelligibility_after_autotune(rendered):
 
 @pytest.mark.slow
 def test_whisper_hears_hook_and_refrain(rendered):
+    """Pass condition as documented in checks.check_lyrics_in_remix: the hook is heard the way
+    Whisper hears it in the A source ("without you(r) ..."), "fall asleep" at least once.
+    The literal plan wording ("don't you feel" everywhere) is reported as plan_literal_met."""
     _assert(C.check_lyrics_in_remix())
