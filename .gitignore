@@ -1,12 +1,14 @@
 # audio sources and renders stay local (rights belong to their owners)
 quelle/
-work/
-out/
-stems/
+# data dirs are symlinks to /mnt/steam-library/remix-hook (no trailing slash: symlinks are files to git)
+work
+out
+stems
+.venv
 *.wav
 *.mp3
 *.mp4
 *.mpeg
 *.flac
-.venv/
 __pycache__/
+.pytest_cache/
