@@ -343,20 +343,26 @@ def render_master(resolve: Any, p: Any, fmt: str, log=print, timeout_s: int = 3 
     return hits[-1]
 
 
-def to_mp4(master: Path, mp4: Path, audio: Path | None = None, gain_db: float = 0.0) -> Path:
-    """H.264 crf 17, 60 fps, AAC 320k, faststart. `audio` replaces the master's sound (the remix
-    WAV was updated during the render); it starts at timeline frame 0, no offset."""
-    mp4.parent.mkdir(parents=True, exist_ok=True)
+def encode_video(master: Path, video: Path) -> Path:
+    """H.264 (crf 17, 60 fps, yuv420p) of the master's picture only, kept for re-muxing."""
+    video.parent.mkdir(parents=True, exist_ok=True)
+    tmp = video.with_name(f".{video.name}")
+    subprocess.run(["nice", "-n", "12", "ffmpeg", "-v", "error", "-y", "-i", str(master), "-map", "0:v:0",
+                    "-c:v", "libx264", "-preset", "medium", "-crf", "17", "-threads", "6",
+                    "-pix_fmt", "yuv420p", "-r", str(FPS), "-an", "-f", "mp4", str(tmp)],
+                   check=True, timeout=4 * 3600)
+    tmp.replace(video)
+    return video
+
+
+def mux(video: Path, audio: Path, mp4: Path, gain_db: float = 0.0) -> Path:
+    """Video stream copied, `audio` (starts at timeline frame 0, no offset) as AAC 320k, faststart."""
     tmp = mp4.with_name(f".{mp4.name}")
-    cmd = ["nice", "-n", "5", "ffmpeg", "-v", "error", "-y", "-i", str(master)]
-    if audio is not None:
-        cmd += ["-i", str(audio), "-map", "0:v:0", "-map", "1:a:0"]
-    else:
-        cmd += ["-map", "0:v:0", "-map", "0:a:0"]
+    cmd = ["ffmpeg", "-v", "error", "-y", "-i", str(video), "-i", str(audio), "-map", "0:v:0", "-map", "1:a:0",
+           "-c:v", "copy"]
     if gain_db:
         cmd += ["-af", f"volume={gain_db}dB"]
-    cmd += ["-c:v", "libx264", "-preset", "medium", "-crf", "17", "-pix_fmt", "yuv420p", "-r", str(FPS),
-            "-c:a", "aac", "-b:a", "320k", "-shortest", "-movflags", "+faststart", "-f", "mp4", str(tmp)]
-    subprocess.run(cmd, check=True, timeout=4 * 3600)
+    cmd += ["-c:a", "aac", "-b:a", "320k", "-shortest", "-movflags", "+faststart", "-f", "mp4", str(tmp)]
+    subprocess.run(cmd, check=True, timeout=1800)
     tmp.replace(mp4)
     return mp4

@@ -100,11 +100,24 @@ def do_master(fmt: str) -> None:
           flush=True)
 
 
-def do_mp4(fmt: str, gain_db: float = 0.0) -> None:
+def video_path(fmt: str) -> Path:
+    return resolve_io.WORK / f"lyrics-remix-{fmt}-video.mp4"
+
+
+def do_mp4(fmt: str) -> None:
+    """Encode the picture once, mux the v2.2 sound; if the AAC true peak ends above -1.0 dBTP,
+    re-mux with the WAV lowered by 0.3 dB (video copied, no new encode)."""
     t0 = time.time()
-    mp4 = resolve_io.to_mp4(master_path(fmt), mp4_path(fmt), audio=AUDIO, gain_db=gain_db)
+    video = resolve_io.encode_video(master_path(fmt), video_path(fmt))
+    mp4 = resolve_io.mux(video, AUDIO, mp4_path(fmt))
+    loud = loudness(mp4)
+    gain = 0.0
+    if loud["dbtp"] is not None and loud["dbtp"] > -1.0:
+        gain = -0.3
+        mp4 = resolve_io.mux(video, AUDIO, mp4_path(fmt), gain_db=gain)
+        loud = loudness(mp4)
     shutil.copy2(mp4, VIDEOS / mp4.name)
-    print(json.dumps({"mp4": str(mp4), "copy": str(VIDEOS / mp4.name),
+    print(json.dumps({"mp4": str(mp4), "copy": str(VIDEOS / mp4.name), "gain_db": gain, "loudness": loud,
                       "encode_min": round((time.time() - t0) / 60, 1)}), flush=True)
 
 
