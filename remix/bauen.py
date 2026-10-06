@@ -116,7 +116,8 @@ def main(argv: list[str] | None = None) -> int:
             ap.error("uebernehmen braucht --von <ordner>")
         step_uebernehmen(args.von)
     if args.schritt == "resolve":
-        step_resolve()
+        state = step_resolve()
+        log.info("resolve: %s", json.dumps(state, ensure_ascii=False, default=str))
     return 0
 
 
