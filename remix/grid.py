@@ -19,6 +19,11 @@ from scipy.signal import butter, sosfiltfilt
 from .audio_io import to_mono
 
 HOP = 128
+# Constant latency of the onset-envelope phase estimate (STFT centring + flux peak), calibrated
+# on click tracks: 11-12 ms. A and B grids and all QA phases use the same estimator, so it
+# cancels in every relative measurement (A vs B placement, remix vs source); the remix bar lines
+# therefore sit ~11 ms after the physical transients of B's downbeats.
+ONSET_LATENCY_S = 0.011
 
 
 @dataclass(frozen=True)

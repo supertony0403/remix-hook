@@ -39,7 +39,10 @@ B_DOWNBEAT0 = 0.011
 STRETCH = A_BPM / BPM  # output/input duration ratio for A (0.85333)
 SEMITONES_A = config.SEMITONES_A
 
-SPLICE = 0.008  # bars (12.8 ms) before the bar line for instrumental splices
+SPLICE = 0.0125  # bars (20 ms) before the bar line for instrumental splices
+# B's drum transients start ~6.5 ms before the (estimator-defined) bar lines (grid.ONSET_LATENCY_S
+# minus attack). Synth one-shots are placed on the physical transient, silences end before it.
+TRANSIENT_LEAD_S = 0.0065
 
 TOTAL_BARS = 100
 TAIL_BARS = 2.5  # reverb/delay tail after the final downbeat

@@ -28,7 +28,11 @@ def separate(song: str, src: Path, model_name: str = "htdemucs_ft", shifts: int 
     from demucs.apply import apply_model
     from demucs.pretrained import get_model
 
+    import random
+
     torch.set_num_threads(max(1, (__import__("os").cpu_count() or 4)))
+    random.seed(0)  # demucs `shifts` draws random offsets
+    torch.manual_seed(0)
     model = get_model(model_name)
     model.eval()
     msr = model.samplerate

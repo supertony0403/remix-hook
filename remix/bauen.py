@@ -4,6 +4,8 @@
     .venv/bin/python -m remix.bauen render       # only render + master + export
     .venv/bin/python -m remix.bauen pruefen      # QA report (out/pruefbericht.json)
     .venv/bin/python -m remix.bauen resolve      # fill the DaVinci Resolve project + render
+    REMIX_OUT=/path .venv/bin/python -m remix.bauen render   # render side by side, then
+    .venv/bin/python -m remix.bauen uebernehmen --von /path  # promote atomically into out/
 """
 
 from __future__ import annotations
@@ -66,6 +68,29 @@ def step_pruefen() -> dict:
     return rep
 
 
+def step_uebernehmen(src_dir: Path) -> list[str]:
+    """Promote a side-by-side render (REMIX_OUT=...) into out/ atomically: copy to a temp file in
+    the target directory, then os.replace, so readers (Resolve) never see a half-written file."""
+    import os
+    import shutil
+
+    moved = []
+    names = [f"spuren/{k}.wav" for k in config.TRACK_NAMES] + [
+        "remix-hook.wav", "remix-hook.mp3", "report.json", "pruefbericht.json"]
+    for name in names:
+        src = src_dir / name
+        if not src.exists():
+            continue
+        dst = config.OUT / name
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        tmp = dst.with_name(f".{dst.name}.tmp")
+        shutil.copyfile(src, tmp)
+        os.replace(tmp, dst)
+        moved.append(name)
+    log.info("uebernommen nach %s: %s", config.OUT, moved)
+    return moved
+
+
 def step_resolve() -> dict:
     from .resolve_project import fill_project
 
@@ -74,7 +99,8 @@ def step_resolve() -> dict:
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="remix.bauen")
-    ap.add_argument("schritt", choices=["stems", "analyse", "render", "pruefen", "resolve", "alles"])
+    ap.add_argument("schritt", choices=["stems", "analyse", "render", "pruefen", "resolve", "uebernehmen", "alles"])
+    ap.add_argument("--von", type=Path, help="uebernehmen: Quellordner eines REMIX_OUT-Renders")
     args = ap.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(message)s")
     if args.schritt in ("stems", "alles"):
@@ -85,6 +111,10 @@ def main(argv: list[str] | None = None) -> int:
         step_render()
     if args.schritt in ("pruefen", "alles"):
         step_pruefen()
+    if args.schritt == "uebernehmen":
+        if not args.von:
+            ap.error("uebernehmen braucht --von <ordner>")
+        step_uebernehmen(args.von)
     if args.schritt == "resolve":
         step_resolve()
     return 0

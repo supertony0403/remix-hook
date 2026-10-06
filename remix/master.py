@@ -14,9 +14,12 @@ import pyloudnorm as pyln
 from scipy.ndimage import minimum_filter1d, uniform_filter1d
 from scipy.signal import resample_poly
 
+import logging
+
 from . import config
 
 SR = config.SR
+log = logging.getLogger(__name__)
 
 
 def true_peak_env(x: np.ndarray, os: int = 4, chunk: int = 480_000) -> np.ndarray:
@@ -44,7 +47,8 @@ def limiter_gain(x: np.ndarray, ceiling_db: float, lookahead_ms: float = 5.0,
     ceiling = 10 ** (ceiling_db / 20)
     env = true_peak_env(x) if true_peak else np.abs(x).max(axis=1)
     need = np.minimum(1.0, ceiling / np.maximum(env, 1e-9)).astype(np.float64)
-    L = max(1, int(lookahead_ms / 1000 * SR))
+    L = max(2, int(lookahead_ms / 1000 * SR))
+    L += L % 2  # window origins below are exact for even L only
     # g1[i] = min(need[i .. i+L])  (forward-looking hold)
     g1 = minimum_filter1d(need, size=L + 1, origin=-(L // 2), mode="nearest")
     # release: block-rate recursion g[k] = min(g1[k], g[k-1] + (1-g[k-1]) * a)
@@ -193,6 +197,15 @@ def master_chain(mix: np.ndarray, target_lufs: float = config.TARGET_LUFS,
         if abs(err) < 0.03:
             break
         pre += err * 1.1
+    else:  # not converged: re-evaluate so gain, master and stats come from the same `pre`
+        log.warning("master_chain: loudness loop not converged (last error %.2f LU)", err)
+        y0 = mix * 10 ** (pre / 20)
+        gc = glue_comp_gain(y0, comp_threshold_db)
+        gs = soft_clip_gain(y0 * gc[:, None], clip_threshold_db, clip_ceiling_db)
+        y2 = y0 * gc[:, None] * gs
+        gl = limiter_gain(y2, ceiling_dbtp, release_ms=120.0)
+        out = y2 * gl[:, None]
+        lufs = integrated_lufs(out)
     gain = (10 ** (pre / 20)) * gc[:, None] * gs * gl[:, None]
     loud = 20 * np.log10(np.abs(y0).max(axis=1) + 1e-9) > -50
     comp_gr = -20 * np.log10(gc)

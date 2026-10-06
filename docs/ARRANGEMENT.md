@@ -44,3 +44,33 @@ Analyse-Rohdaten: `docs/a_analyse.json`, `docs/b_analyse.json` (Beats, Segmente)
 ## DaVinci Resolve
 Neues Projekt **„Remix Hook“** (48 kHz), Timeline **„Remix“**. Jede Ebene liegt als eigene, durchgehende WAV auf einer eigenen Spur (alle bei 0 dB, Summe = Mixdown):
 A1 B-Instrumental, A2 B-Gesang, A3 A-Hook-Gesang, A4 Chops/Stutter, A5 FX (Riser, Sub-Drops, Impacts), A6 Master-Hall/Delay-Returns. Marker je Abschnitt. Render: Audio-only WAV nach `~/Videos/remix-hook/` (Media Storage!), dazu MP3 320 kbit/s per ffmpeg nach `out/`.
+
+## Umsetzung (gemessen, Abweichungen begründet)
+Code: `remix/` (CLI `python -m remix.bauen alles|render|pruefen|resolve`), Arrangement als Daten in `remix/arrangement.py`, Messwerte in `docs/grid.json`.
+
+**Tempo und Raster (gemessen statt übernommen).** librosas Tempo ist auf sein Hop-Raster quantisiert (512 Samples bei 22,05 kHz). Daher kamen die 64,6 bzw. 129,2 BPM für A und die 152 BPM für B. Kammfilter auf einer Onset-Hüllkurve mit 2,7 ms Auflösung (Drums-Stem) ergibt:
+- **A = 128,00 BPM**, erste Eins bei 0,061 s. Die Drums setzen exakt auf A-Takt 24 ein.
+- **B = 150,00 BPM**, erste Eins bei 0,011 s. Konstant über den ganzen Song (30-s-Fenster: 150,0 ± 0,1).
+
+Ein 152er-Raster wäre gegen B um ca. 21 ms pro Takt gedriftet. Der Remix läuft deshalb auf Bs echtem Raster: **1 Takt = 1,600 s**, und A wird um den Faktor 150/128 gestreckt. Die Eins von B wurde über die Einsatzpunkte von Drums und Bass nach Pausen bestimmt (12,81 / 25,61 / 51,21 / 76,81 / 115,21 s). Die Kick allein ist bei Bs Halftime-Groove mehrdeutig.
+
+**Tonart.** B-Harmonik: h-Moll (Korrelation 0,91). Beste Transposition des A-Gesangs auf B: **−2 Halbtöne** (Chroma-Messung). Der Plan ist damit bestätigt.
+
+**Hook-Text.** Im A-Gesangsstem ist der Hook „don't you feel“ (Einsätze 2,59 / 6,36 / 10,09 s, je 2 A-Takte). Ein „but“ ist kaum vorhanden. Whisper hört die Zeile schon im Original mehrdeutig („don't you care“, „without you here“).
+
+**Call-and-Response.** Die B-Refrains 3+4 sind ein dichter Rap ohne Lücke ≥ 0,7 s. Ein vollständiges „don't you feel“ (1,1 s) passt nicht zwischen die Zeilen. Deshalb:
+- Refrain 3 bleibt original, mit einem „feel“ in der einzigen Lücke (Takt 83,5).
+- In Refrain 4 ersetzt A die 2. B-Zeile („don't you feel“ statt „Crazy man …“).
+- A antwortet im Outro auf Bs letzte Zeile.
+
+**Strophe 1 auf 16 Takte:** B-Takte 24–32 und 40–48. Der Schnitt liegt in einer Rap-Pause, die zweite Hälfte beginnt mit „I love you so much“ als Auftakt.
+
+**Pre-Drop:** Takt 75 enthält nur A „don't you …“. Bs Auftakt „Fall a-“ bleibt in der Stille vor dem Drop stehen (Takt 75,93).
+
+**v2 (Feedback Anthony):**
+- B-Gesang mit Autotune auf h-Moll. Tonhöhe per pyworld Harvest. Korrigiert werden nur klar periodische Frames (D4C-Aperiodizität). Rap: 25 ms, Stärke 0,85. Refrains: 60 ms, Stärke 0,7.
+- Resynthese mit rubberband R3 `--freqmap` und Formanterhalt. Gemessene Eigenheit: rubberband setzt die Karte 76 ms zu früh um, das wird kompensiert.
+- Gemeinsame Vocal-Kette für B und den A-Hook: HPF 100 Hz, Gate/Expander, De-Esser, 4:1, Sättigung, Präsenz-EQ, mono mittig, Lautheitsausgleich.
+- Hall: 1,0 s statt 2,9 s, 40 ms Pre-Delay, Send ca. 10 dB leiser. Den Raum trägt ein leises 1/16-Slap mit Hochpass. Hall-Throws nur an Phrasen- und Abschnittsenden.
+- Instrumental: Mitten (1–4 kHz) werden zur Stimme um 3 dB geduckt, +1,5 dB Low-Shelf.
+- Master: Glue-Kompressor 1,6:1 → Soft-Clip → True-Peak-Limiter. Diese Gain-Hüllkurve wird identisch auf jede Spur angewandt, sodass die Summe der Spuren dem Master entspricht.

@@ -10,7 +10,7 @@ import pyloudnorm as pyln
 
 from . import config, fx as F
 from .arrangement import (A_BAR, A_DOWNBEAT0, ALL, BAR, BEAT, B_DOWNBEAT0, HOOK_LEVEL_REF,
-                          REFRAIN_LEVEL_REF, STRETCH, Arrangement, Clip)
+                          REFRAIN_LEVEL_REF, STRETCH, TRANSIENT_LEAD_S, Arrangement, Clip)
 from .audio_io import read_wav, write_wav
 from .edit import add_at, cut
 from .stems import load_stems
@@ -43,11 +43,9 @@ class Sources:
 
 def a_rb_vocals() -> np.ndarray:
     """A vocals stretched 128 -> 150 BPM and shifted -2 semitones (formants kept), cached."""
-    if A_RB_PATH.exists():
-        return read_wav(A_RB_PATH)[0]
     y, _ = read_wav(config.STEMS / "a" / "vocals.wav")
-    z = rubberband(y, STRETCH, config.SEMITONES_A, formant=True)
-    write_wav(A_RB_PATH, z, SR)
+    z = rubberband(y, STRETCH, config.SEMITONES_A, formant=True)  # keyed cache in work/rb
+    write_wav(A_RB_PATH, z, SR)  # convenience copy for listening
     return z
 
 
@@ -176,6 +174,8 @@ def _clip_audio(c: Clip, src: Sources, trims: dict[str, float]) -> tuple[np.ndar
         x, t0, t1 = shifted, t0 - a0 / SR, t1 - a0 / SR
     seg, shift = cut(x, t0, t1)
     at = remix_samples(c.remix_start) + shift
+    if c.source.startswith("fx:"):
+        at -= int(round(TRANSIENT_LEAD_S * SR))
     g = 10 ** (c.gain_db / 20)
     for f in c.fx:
         if f.kind == "level":
@@ -198,6 +198,9 @@ def _filter_sweep(x: np.ndarray, s0: int, s1: int, f0: float, f1: float, curve: 
     """In-place cutoff sweep over [s0, s1) with 6 ms crossfades in and out of the filter."""
     xf = int(0.006 * SR)
     pre = int(0.05 * SR)
+    s0, s1 = max(0, min(s0, len(x))), max(0, min(s1, len(x)))
+    if s1 <= s0:
+        return
     lo, hi = max(0, s0 - pre), min(len(x), s1 + xf)
     sweep = F.log_sweep(s1 - s0, f0, f1, curve)
     cutoff = np.r_[np.full(s0 - lo, f0), sweep, np.full(hi - s1, f1)]
@@ -211,9 +214,14 @@ def _filter_sweep(x: np.ndarray, s0: int, s1: int, f0: float, f1: float, curve: 
 
 
 def _mute(x: np.ndarray, s0: int, s1: int) -> None:
-    """Silence [s0, s1): 6 ms fade-out before s0, 2 ms fade-in ending exactly at s1 so the
-    following downbeat transient stays intact."""
+    """Silence [s0, s1'): 6 ms fade-out before s0; the silence ends 8 ms before the following
+    downbeat's physical transient (TRANSIENT_LEAD_S before the bar line) with a 2 ms fade-in,
+    so the drop's attack is never cut."""
     fo, fi = int(0.006 * SR), int(0.002 * SR)
+    s1 = s1 - int(round((TRANSIENT_LEAD_S + 0.008) * SR))
+    s0, s1 = max(0, min(s0, len(x))), max(0, min(s1, len(x)))
+    if s1 - s0 <= fi:
+        return
     a = max(0, s0 - fo)
     x[a:s0] *= np.linspace(1.0, 0.0, s0 - a, dtype=np.float32)[:, None]
     x[s0:s1 - fi] = 0.0
@@ -232,8 +240,8 @@ def _apply_automation(tracks: dict[str, np.ndarray], arr: Arrangement) -> None:
                 env = F.sidechain_env(s1 - s0, BEAT, 0.0, float(a.get("depth_db")))
                 x[s0:s1] *= env[:, None]
             elif a.kind == "tape_stop":
-                stopped = F.tape_stop(x[s0:].copy(), (s1 - s0) / SR, float(a.get("power", 1.6)))
-                x[s0:s1] = stopped[: s1 - s0]
+                stopped = F.tape_stop(x[s0:s1].copy(), s1 - s0, float(a.get("power", 1.6)))
+                x[s0:s1] = stopped
             elif a.kind == "mute":
                 _mute(x, s0, s1)
             else:
@@ -284,9 +292,10 @@ def render(arr: Arrangement, src: Sources | None = None) -> Render:
                 sends.append(Send(c.track, str(f.get("bus")), at, at + len(seg),
                                   10 ** (float(f.get("db")) / 20), int(0.01 * SR)))
             elif f.kind == "throw":
-                r0 = max(0, int(round((float(f.get("start")) - c.start) * BAR * SR)))
+                base = remix_samples(c.remix_start)  # musical start, independent of the snap shift
+                r0 = int(round((float(f.get("start")) - c.start) * BAR * SR))
                 r1 = int(round((float(f.get("end")) - c.start) * BAR * SR))
-                sends.append(Send(c.track, str(f.get("bus")), at + r0, at + r1,
+                sends.append(Send(c.track, str(f.get("bus")), max(at, base + r0), base + r1,
                                   10 ** (float(f.get("db")) / 20), int(0.03 * SR)))
 
     # vocal chains run on the whole track (continuous compressor/gate state)

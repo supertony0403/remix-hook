@@ -18,35 +18,50 @@ import soxr
 from .audio_io import to_mono
 
 WHISPER_PY = Path.home() / "Documents/Programmierung/nomissuccess-spot/.venv/bin/python"
+MODEL_DIR = "/mnt/steam-library/remix-hook/whisper-models"  # large models stay off the system disk
+DEFAULT_MODEL = "turbo"  # large-v3-turbo; "small" garbles the German/English rap
 
 _RUNNER = r"""
 import json, sys
 import numpy as np
 from faster_whisper import WhisperModel
-audio = np.load(sys.argv[1]).astype(np.float32)
-model = WhisperModel(sys.argv[2], device="cpu", compute_type="int8")
-segs, _ = model.transcribe(audio, language="en", word_timestamps=True, vad_filter=False,
-                           beam_size=5, condition_on_previous_text=False)
-words = []
-for s in segs:
-    for w in (s.words or []):
-        words.append({"word": w.word.strip(), "start": round(w.start, 3), "end": round(w.end, 3),
-                      "p": round(w.probability, 3)})
-print(json.dumps(words))
+model = WhisperModel(sys.argv[1], device="cpu", compute_type="int8", download_root=sys.argv[3])
+lang = None if sys.argv[2] == "auto" else sys.argv[2]
+out = []
+for path in sys.argv[4:]:
+    audio = np.load(path).astype(np.float32)
+    # temperature 0 only: the default fallback samples at higher temperatures -> not deterministic
+    segs, _ = model.transcribe(audio, language=lang, word_timestamps=True, vad_filter=False,
+                               beam_size=5, condition_on_previous_text=False, temperature=0.0)
+    words = []
+    for s in segs:
+        for w in (s.words or []):
+            words.append({"word": w.word.strip(), "start": round(w.start, 3), "end": round(w.end, 3),
+                          "p": round(w.probability, 3)})
+    out.append(words)
+print(json.dumps(out))
 """
 
 
-def transcribe(y: np.ndarray, sr: int, model: str = "small") -> list[dict]:
-    mono = to_mono(y).astype(np.float32)
-    a16 = soxr.resample(mono, sr, 16_000).astype(np.float32)
-    peak = float(np.abs(a16).max()) or 1.0
-    a16 = a16 / peak * 0.9
+def transcribe_many(clips: list[np.ndarray], sr: int, model: str = DEFAULT_MODEL,
+                    language: str = "auto") -> list[list[dict]]:
+    """Transcribe several clips with one model load (large models take seconds to load)."""
     with tempfile.TemporaryDirectory() as td:
-        npy = Path(td) / "audio.npy"
-        np.save(npy, a16)
-        res = subprocess.run([str(WHISPER_PY), "-c", _RUNNER, str(npy), model],
+        paths = []
+        for i, y in enumerate(clips):
+            mono = to_mono(y).astype(np.float32)
+            a16 = soxr.resample(mono, sr, 16_000).astype(np.float32)
+            peak = float(np.abs(a16).max()) or 1.0
+            npy = Path(td) / f"clip{i}.npy"
+            np.save(npy, a16 / peak * 0.9)
+            paths.append(str(npy))
+        res = subprocess.run([str(WHISPER_PY), "-c", _RUNNER, model, language, MODEL_DIR, *paths],
                              check=True, capture_output=True, text=True)
     return json.loads(res.stdout.strip().splitlines()[-1])
+
+
+def transcribe(y: np.ndarray, sr: int, model: str = DEFAULT_MODEL, language: str = "auto") -> list[dict]:
+    return transcribe_many([y], sr, model, language)[0]
 
 
 def norm(word: str) -> str:

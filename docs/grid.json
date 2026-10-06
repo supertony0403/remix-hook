@@ -1,0 +1,103 @@
+{
+  "a": {
+    "bpm": 127.995,
+    "beat_phase": 0.061,
+    "downbeat0": 0.061,
+    "downbeat_index": 0,
+    "entry_votes_by_pos": [
+      25,
+      0,
+      0,
+      0
+    ],
+    "kick_by_pos": [
+      0.1197,
+      0.0026,
+      0.0468,
+      0.0361
+    ],
+    "local_bpm_30s": [
+      125.94,
+      128.0,
+      127.96,
+      127.98,
+      127.98
+    ],
+    "librosa_tempo": 64.6,
+    "beat_list_fit_bpm": 127.999,
+    "median_beat_interval_bpm": 129.199
+  },
+  "b": {
+    "bpm": 150.0,
+    "beat_phase": 0.011,
+    "downbeat0": 0.011,
+    "downbeat_index": 0,
+    "entry_votes_by_pos": [
+      14,
+      0,
+      0,
+      3
+    ],
+    "kick_by_pos": [
+      0.1006,
+      0.0435,
+      0.0663,
+      0.1046
+    ],
+    "local_bpm_30s": [
+      150.1,
+      150.0,
+      150.0,
+      150.0,
+      150.01
+    ],
+    "librosa_tempo": 151.999,
+    "beat_list_fit_bpm": 150.014,
+    "median_beat_interval_bpm": 151.999
+  },
+  "key": {
+    "a_vocals_top": [
+      [
+        "G#-Moll",
+        0.383
+      ],
+      [
+        "F#-Moll",
+        0.378
+      ],
+      [
+        "E-Dur",
+        0.288
+      ]
+    ],
+    "b_harmonic_top": [
+      [
+        "B-Moll",
+        0.906
+      ],
+      [
+        "D-Dur",
+        0.574
+      ],
+      [
+        "B-Dur",
+        0.504
+      ]
+    ],
+    "best_transposition_a_to_b": -2,
+    "transposition_scores": {
+      "-6": 0.297,
+      "-5": 0.163,
+      "-4": 0.279,
+      "-3": -0.097,
+      "-2": 0.342,
+      "-1": -0.184,
+      "0": -0.227,
+      "1": -0.417,
+      "2": -0.28,
+      "3": 0.132,
+      "4": -0.249,
+      "5": 0.241
+    }
+  }
+}

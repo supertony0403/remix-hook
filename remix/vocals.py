@@ -13,7 +13,7 @@ import numpy as np
 from . import config
 from .audio_io import read_wav, to_mono, write_wav
 
-PITCH_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
+PITCH_NAMES = ["C", "Cis", "D", "Dis", "E", "F", "Fis", "G", "Gis", "A", "B", "H"]  # German (B = Bb, H = B)
 
 # Krumhansl-Kessler key profiles
 KK_MAJOR = np.array([6.35, 2.23, 3.48, 2.33, 4.38, 4.09, 2.52, 5.19, 2.39, 3.66, 2.29, 2.88])
@@ -24,8 +24,8 @@ def rubberband(x: np.ndarray, time_ratio: float, semitones: float = 0.0,
                formant: bool = True, crisp: int | None = None) -> np.ndarray:
     """Offline rubberband R3. `time_ratio` = output duration / input duration. Cached in work/."""
     key = hashlib.sha1(
-        x.tobytes()[:: max(1, x.nbytes // 2_000_000)]
-        + f"{len(x)}|{time_ratio:.9f}|{semitones}|{formant}|{crisp}".encode()
+        np.ascontiguousarray(x, np.float32).tobytes()
+        + f"{x.shape}|{time_ratio:.9f}|{semitones}|{formant}|{crisp}|-3 -q".encode()
     ).hexdigest()[:16]
     cache = config.WORK / "rb" / f"{key}.wav"
     if cache.exists():

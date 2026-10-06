@@ -9,7 +9,7 @@ ROOT = Path(__file__).resolve().parent.parent
 QUELLE = ROOT / "quelle"
 WORK = ROOT / "work"
 STEMS = ROOT / "stems"
-OUT = ROOT / "out"
+OUT = Path(os.environ.get("REMIX_OUT", str(ROOT / "out")))  # override for side-by-side renders
 DOCS = ROOT / "docs"
 
 SRC_A = QUELLE / "a_hook.mp4"
@@ -19,7 +19,7 @@ DATA_ROOT = Path("/mnt/steam-library/remix-hook")
 os.environ.setdefault("TORCH_HOME", str(DATA_ROOT / "torch"))
 
 SR = 48_000  # working sample rate
-BPM_B = 152.0
+BPM_B = 150.0  # measured (librosa's 152 is hop-lag quantisation)
 BEAT_B = 60.0 / BPM_B
 BAR_B = 4 * BEAT_B  # 1.5789 s
 

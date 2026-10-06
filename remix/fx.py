@@ -189,12 +189,11 @@ def impact(dur: float = 3.0, seed: int = 31) -> np.ndarray:
 
 # --------------------------------------------------------------------------- processing
 
-def tape_stop(x: np.ndarray, dur: float, power: float = 1.6) -> np.ndarray:
-    """Playback-rate ramp 1 -> 0 over `dur` seconds (pitch and speed fall together)."""
-    n_out = int(dur * SR)
+def tape_stop(x: np.ndarray, n_out: int, power: float = 1.6) -> np.ndarray:
+    """Playback-rate ramp 1 -> 0 over `n_out` samples (pitch and speed fall together)."""
     t = np.arange(n_out) / n_out
     rate = (1.0 - t) ** power
-    pos = np.cumsum(rate)
+    pos = np.cumsum(rate) - rate[0]  # first output sample = first input sample
     pos = np.clip(pos, 0, len(x) - 2)
     i0 = pos.astype(int)
     frac = (pos - i0)[:, None]

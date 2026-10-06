@@ -137,9 +137,12 @@ def export(mr: MixResult, extra: dict | None = None) -> dict:
         check=True,
     )
     r = mr.result
+    from .master import integrated_lufs
     info = {
-        "lufs": round(r.lufs, 2),
-        "dbtp": round(r.dbtp, 2),
+        "lufs": round(integrated_lufs(master_sum), 2),  # of the delivered master (= sum of stems)
+        "dbtp": round(true_peak_db(master_sum), 2),
+        "chain_lufs": round(r.lufs, 2),
+        "stem_limiter_master_diff_max": float(np.abs(master_sum - r.master).max()),
         "master_pre_gain_db": round(r.pre_gain_db, 2),
         "comp_gr_mean_db": round(r.comp_gr_mean_db, 2),
         "comp_gr_max_db": round(r.comp_gr_max_db, 2),
