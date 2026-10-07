@@ -445,13 +445,14 @@ def concat_parts(parts: list[Path], out: Path, expected_frames: list[int]) -> Pa
         got = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-count_packets",
                               "-show_entries", "stream=nb_read_packets", "-of", "csv=p=0", str(path)],
                              capture_output=True, text=True, check=True).stdout.strip()
+        got = next((x for x in got.split() if x.strip()), "0")  # ffprobe 7 repeats it for stream groups
         if int(got) != n:
             raise ResolveError(f"{path.name}: {got} frames, expected {n}")
     lst = out.with_suffix(".txt")
     lst.write_text("".join(f"file '{pth}'\n" for pth in parts), encoding="utf-8")
     tmp = out.with_name(f".{out.name}")
     subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "concat", "-safe", "0", "-i", str(lst),
-                    "-map", "0", "-c", "copy", "-f", "mov", str(tmp)], check=True, timeout=3600)
+                    "-map", "0:v:0", "-map", "0:a?", "-c", "copy", "-f", "mov", str(tmp)], check=True, timeout=3600)
     tmp.replace(out)
     lst.unlink()
     return out
