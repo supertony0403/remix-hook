@@ -102,7 +102,7 @@ def do_master(fmt: str) -> None:
 
 
 def section_spans(fmt: str) -> list[tuple[str, int, int]]:
-    data = json.loads((resolve_io.WORK / "lyrics.json").read_text())
+    data = json.loads((resolve_io.WORK / "lyrics.json").read_text(encoding="utf-8"))
     return [(s["name"], int(round(s["comp_start"] * FPS)), int(round(s["comp_end"] * FPS)))
             for s in data["sections"]]
 
@@ -165,7 +165,7 @@ def do_check(fmt: str) -> dict:
         "sheets": [str(contact_sheet(mp4, OUT / f"kontaktbogen-{fmt}-{i + 1}.png", s, 82.0))
                    for i, s in enumerate((0.0, 82.0))],
     }
-    (OUT / f"check-{fmt}.json").write_text(json.dumps(rep, indent=1))
+    (OUT / f"check-{fmt}.json").write_text(json.dumps(rep, indent=1), encoding="utf-8")
     print(json.dumps(rep, indent=1), flush=True)
     return rep
 

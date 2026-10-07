@@ -23,8 +23,8 @@ FPS = 60
 def load_data() -> dict[str, Any]:
     full = WORK / "lyrics.json"
     if full.exists():
-        return json.loads(full.read_text())
-    return json.loads((WORK / "rhythm_interim.json").read_text())
+        return json.loads(full.read_text(encoding="utf-8"))
+    return json.loads((WORK / "rhythm_interim.json").read_text(encoding="utf-8"))
 
 
 def comp_dir(fmt: str) -> Path:

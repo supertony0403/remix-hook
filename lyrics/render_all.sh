@@ -6,6 +6,7 @@
 set -u
 cd "$(dirname "$0")/.."
 L=work/lyrics
+streak=0
 for i in $(seq 1 720); do
   ok=$(timeout 60 .venv/bin/python - <<'PY' 2>/dev/null
 from lyrics import resolve_io as rio
@@ -18,7 +19,9 @@ except Exception:
 PY
 )
   avail=$(free -m | awk '/^Speicher|^Mem/ {print $7}')
-  if [ "$ok" = "yes" ] && [ "$avail" -ge 14000 ]; then break; fi
+  # the API sometimes answers "empty queue" once while Resolve is still stuck: require 3 in a row
+  if [ "$ok" = "yes" ] && [ "$avail" -ge 14000 ]; then streak=$((${streak:-0} + 1)); else streak=0; fi
+  if [ "$streak" -ge 3 ]; then break; fi
   [ $((i % 15)) -eq 0 ] && echo "$(date +%T) waiting: api=$ok avail=${avail}MB"
   sleep 20
 done

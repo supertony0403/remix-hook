@@ -40,7 +40,7 @@ def main() -> None:
     language = sys.argv[4] if len(sys.argv) > 4 else "en"
     from faster_whisper import WhisperModel
 
-    jobs = json.load(open(jobs_path))
+    jobs = json.load(open(jobs_path, encoding="utf-8"))
     model = WhisperModel(model_name, device="cpu", compute_type="int8", cpu_threads=8)
     result = {"model": model_name, "language": language, "jobs": {}}
     for job in jobs:
@@ -56,7 +56,7 @@ def main() -> None:
                               "end": round(t0 + w.end, 3), "p": round(w.probability, 3)})
         result["jobs"][job["id"]] = words
         print(job["id"], len(words), " ".join(w["word"] for w in words), flush=True)
-    with open(out, "w") as fh:
+    with open(out, "w", encoding="utf-8") as fh:
         json.dump(result, fh, indent=1)
 
 

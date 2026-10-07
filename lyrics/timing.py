@@ -116,7 +116,7 @@ def whisper_jobs() -> list[dict]:
 def run_whisper(model: str = MODEL, language: str = "en") -> Path:
     WORK.mkdir(parents=True, exist_ok=True)
     jobs_path = WORK / "whisper_jobs.json"
-    jobs_path.write_text(json.dumps(whisper_jobs(), indent=1))
+    jobs_path.write_text(json.dumps(whisper_jobs(), indent=1), encoding="utf-8")
     out = WORK / f"whisper_clips_{model}{'' if language == 'en' else '_' + language}.json"
     env = {"HF_HOME": HF_HOME, "PATH": "/usr/bin:/bin:/usr/local/bin", "HOME": str(Path.home())}
     subprocess.run([str(WHISPER_PY), str(ROOT / "lyrics" / "whisper_run.py"), str(jobs_path), model,
@@ -501,7 +501,7 @@ def chops() -> list[dict]:
 def load_whisper(model: str = MODEL) -> dict[str, dict[str, list[dict]]]:
     """{"en": jobs, "de": jobs}; runs faster-whisper if a cache file is missing."""
     jobs_path = WORK / "whisper_jobs.json"
-    if jobs_path.exists() and json.loads(jobs_path.read_text()) != json.loads(json.dumps(whisper_jobs())):
+    if jobs_path.exists() and json.loads(jobs_path.read_text(encoding="utf-8")) != json.loads(json.dumps(whisper_jobs())):
         raise RuntimeError("remix/arrangement.py changed since the whisper run (job list differs): "
                            "run `python -m lyrics.timing --whisper`")
     out = {}
@@ -509,15 +509,15 @@ def load_whisper(model: str = MODEL) -> dict[str, dict[str, list[dict]]]:
         path = WORK / f"whisper_clips_{model}{suffix}.json"
         if not path.exists():
             run_whisper(model, lang)
-        out[lang] = json.loads(path.read_text())["jobs"]
+        out[lang] = json.loads(path.read_text(encoding="utf-8"))["jobs"]
     return out
 
 
 def build(model: str = MODEL) -> dict[str, Any]:
     secs = sections()
     wj = load_whisper(model)
-    orig = {"a": json.loads((ROOT / "work" / "a_words.json").read_text()),
-            "b": json.loads((ROOT / "work" / "b_words.json").read_text())}
+    orig = {"a": json.loads((ROOT / "work" / "a_words.json").read_text(encoding="utf-8")),
+            "b": json.loads((ROOT / "work" / "b_words.json").read_text(encoding="utf-8"))}
     all_words: list[tuple[W, str]] = []
     changes: list[dict] = []
     timing_dev: list[float] = []
@@ -610,12 +610,12 @@ def _stats(dev: list[float]) -> dict[str, float]:
 
 def save(data: dict[str, Any], path: Path = OUT_JSON) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(data, indent=1, ensure_ascii=False))
+    path.write_text(json.dumps(data, indent=1, ensure_ascii=False), encoding="utf-8")
     return path
 
 
 def load(path: Path = OUT_JSON) -> dict[str, Any]:
-    return json.loads(path.read_text())
+    return json.loads(path.read_text(encoding="utf-8"))
 
 
 def main() -> None:

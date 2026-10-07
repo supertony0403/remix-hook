@@ -448,7 +448,7 @@ def concat_parts(parts: list[Path], out: Path, expected_frames: list[int]) -> Pa
         if int(got) != n:
             raise ResolveError(f"{path.name}: {got} frames, expected {n}")
     lst = out.with_suffix(".txt")
-    lst.write_text("".join(f"file '{pth}'\n" for pth in parts))
+    lst.write_text("".join(f"file '{pth}'\n" for pth in parts), encoding="utf-8")
     tmp = out.with_name(f".{out.name}")
     subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "concat", "-safe", "0", "-i", str(lst),
                     "-map", "0", "-c", "copy", "-f", "mov", str(tmp)], check=True, timeout=3600)
